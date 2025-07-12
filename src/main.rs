@@ -77,6 +77,51 @@ impl MazeMap {
         let dy = (pos_y as i32 - self.exit_y as i32).abs();
         1.0 / ((dx + dy + 1) as f64)
     }
+
+    fn print_path(&self, path: &[i32]) {
+        let mut pos_x = self.start_x;
+        let mut pos_y = self.start_y;
+
+        let mut path_positions = vec![(pos_y, pos_x)];
+
+        for &dir in path {
+            match dir {
+                0 if pos_y > 0 && self.arri_map[pos_y - 1][pos_x] != 1 => pos_y -= 1,
+                1 if pos_x + 1 < MAP_WIDTH && self.arri_map[pos_y][pos_x + 1] != 1 => pos_x += 1,
+                2 if pos_y + 1 < MAP_HEIGHT && self.arri_map[pos_y + 1][pos_x] != 1 => pos_y += 1,
+                3 if pos_x > 0 && self.arri_map[pos_y][pos_x - 1] != 1 => pos_x -= 1,
+                _ => {}
+            }
+            path_positions.push((pos_y, pos_x));
+        }
+
+        let mut grid = vec![vec![' '; MAP_WIDTH]; MAP_HEIGHT];
+        for i in 0..MAP_HEIGHT {
+            for j in 0..MAP_WIDTH {
+                grid[i][j] = match self.arri_map[i][j] {
+                    1 => '#',
+                    5 => '-',
+                    8 => '=',
+                    _ => ' ',
+                }
+            }
+        }
+
+        for &(y, x) in &path_positions {
+            if (y, x) == (self.start_y, self.start_x) {
+                grid[y][x] = 'S';
+            } else if (y, x) == (self.exit_y, self.exit_x) {
+                grid[y][x] = 'E';
+            } else {
+                grid[y][x] = '*';
+            }
+        }
+
+        for row in grid {
+            let line: String = row.into_iter().collect();
+            println!("{}", line);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -95,14 +140,25 @@ impl Genome {
     }
 }
 
-// -- Decode functions moved out of GenAlgo --
-
 fn bin_to_int(v: &[i32]) -> i32 {
     v.iter().rev().enumerate().map(|(i, &bit)| bit * 2_i32.pow(i as u32)).sum()
 }
 
 fn decode(bits: &[i32]) -> Vec<i32> {
     bits.chunks(2).map(|chunk| bin_to_int(chunk)).collect()
+}
+
+fn directions_to_string(dirs: &[i32]) -> String {
+    dirs.iter()
+        .map(|&d| match d {
+            0 => "↑",
+            1 => "→",
+            2 => "↓",
+            3 => "←",
+            _ => "?",
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 struct GenAlgo {
@@ -194,7 +250,7 @@ impl GenAlgo {
         let maze = &self.maze;
 
         for (i, genome) in self.genomes.iter_mut().enumerate() {
-            let route = decode(&genome.bits); // standalone decode function, no borrow of self
+            let route = decode(&genome.bits);
             genome.fitness = maze.test_route(&route);
 
             self.total_score += genome.fitness;
@@ -212,28 +268,48 @@ impl GenAlgo {
             let mom = self.roulette_selection();
             let dad = self.roulette_selection();
 
-            let (mut baby1_bits, mut baby2_bits) = self.crossover(&mom.bits, &dad.bits);
-            self.mutate(&mut baby1_bits);
-            self.mutate(&mut baby2_bits);
-            babies.push(Genome { bits: baby1_bits, fitness: 0.0 });
-            babies.push(Genome { bits: baby2_bits, fitness: 0.0 });
+            let (mut baby1, mut baby2) = self.crossover(&mom.bits, &dad.bits);
+
+            self.mutate(&mut baby1);
+            self.mutate(&mut baby2);
+
+            babies.push(Genome {
+                bits: baby1,
+                fitness: 0.0,
+            });
+            if babies.len() < self.pop_size {
+                babies.push(Genome {
+                    bits: baby2,
+                    fitness: 0.0,
+                });
+            }
         }
         self.genomes = babies;
         self.generation += 1;
     }
 
     fn run(&mut self) {
-        println!("Population initialized...");
+        println!("Population initialized. Starting evolutionary search...");
+
         let mut input = String::new();
+
         loop {
             self.epoch();
-            println!("Best Fitness Score: {}", self.best_score);
-            println!("Best Genome: {:?}", self.genomes[self.fittest_index].bits);
+
+            let best_route = decode(&self.genomes[self.fittest_index].bits);
+
+            println!("Generation: {}", self.generation);
+            println!("Best Fitness Score: {:.4}", self.best_score);
+            println!("Best Genome Directions: {}", directions_to_string(&best_route));
+            println!("Best Path on Maze:");
+            self.maze.print_path(&best_route);
 
             if self.generation % 5 == 0 {
-                println!("Run next 5 Generations (Y/N)? >");
+                println!("Run next 5 generations? (Y/N) >");
                 input.clear();
-                io::stdin().read_line(&mut input).expect("Failed to read input");
+                io::stdin()
+                    .read_line(&mut input)
+                    .expect("Failed to read input");
                 let answer = input.trim().to_uppercase();
                 if answer != "Y" {
                     break;
@@ -245,8 +321,7 @@ impl GenAlgo {
 }
 
 fn main() {
-    println!("Program started...");
-    let mut ga = GenAlgo::new(0.7, 0.0001, 140, 70, 2);
+    let mut ga = GenAlgo::new(0.7, 0.01, 200, 64, 2);
     ga.run();
 }
 
