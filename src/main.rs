@@ -1,213 +1,252 @@
-use rand::prelude::*;
+use rand::Rng;
+use std::io;
 
-// Constants
-const MAZE_WIDTH: usize = 10;
-const MAZE_HEIGHT: usize = 10;
-const POPULATION_SIZE: usize = 100;
-const GENE_LENGTH: usize = 100;
-const MAX_GENERATIONS: usize = 1000;
-const MUTATION_RATE: f64 = 0.01;
+const MAP_HEIGHT: usize = 10;
+const MAP_WIDTH: usize = 15;
 
-// Directions
-#[derive(Clone, Copy, Debug)]
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
+fn int_to_str(num: i32) -> String {
+    num.to_string()
 }
 
-impl Direction {
-    fn random(rng: &mut ThreadRng) -> Self {
-        match rng.gen_range(0..4) {
-            0 => Direction::Up,
-            1 => Direction::Down,
-            2 => Direction::Left,
-            _ => Direction::Right,
+fn draw_screen(arri_map: &[[i32; MAP_WIDTH]; MAP_HEIGHT], map_size: usize, pos_x: usize, pos_y: usize) {
+    for i in 0..MAP_HEIGHT {
+        for _ in 0..map_size {
+            for j in 0..MAP_WIDTH {
+                if i == pos_y && j == pos_x {
+                    print!("{}", "*".repeat(map_size));
+                } else {
+                    match arri_map[i][j] {
+                        0 => print!("{}", " ".repeat(map_size)),
+                        1 => print!("{}", "#".repeat(map_size)),
+                        5 => print!("{}", "-".repeat(map_size)),
+                        8 => print!("{}", "=".repeat(map_size)),
+                        _ => print!("{}", "?".repeat(map_size)),
+                    }
+                }
+            }
+            println!();
         }
     }
 }
 
-type Position = (usize, usize);
+struct MazeMap {
+    arri_map: [[i32; MAP_WIDTH]; MAP_HEIGHT],
+    start_x: usize,
+    start_y: usize,
+    exit_x: usize,
+    exit_y: usize,
+}
+
+impl MazeMap {
+    fn new() -> Self {
+        MazeMap {
+            arri_map: [
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,0,1,0,0,0,0,0,1,1,1,0,0,0,1],
+                [8,0,0,0,0,0,0,0,1,1,1,0,0,0,1],
+                [1,0,0,0,1,1,1,0,0,1,0,0,0,0,1],
+                [1,0,0,0,1,1,1,0,0,0,0,0,1,0,1],
+                [1,1,0,0,1,1,1,0,0,0,0,0,1,0,1],
+                [1,0,0,0,0,1,0,0,0,0,1,1,1,0,1],
+                [1,0,1,1,0,0,0,1,0,0,0,0,0,0,5],
+                [1,0,1,1,0,0,0,1,0,0,0,0,0,0,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            ],
+            start_x: 14,
+            start_y: 7,
+            exit_x: 0,
+            exit_y: 2,
+        }
+    }
+
+    fn test_route(&self, path: &[i32]) -> f64 {
+        let mut pos_x = self.start_x;
+        let mut pos_y = self.start_y;
+
+        for &dir in path {
+            match dir {
+                0 if pos_y > 0 && self.arri_map[pos_y - 1][pos_x] != 1 => pos_y -= 1,
+                1 if pos_x + 1 < MAP_WIDTH && self.arri_map[pos_y][pos_x + 1] != 1 => pos_x += 1,
+                2 if pos_y + 1 < MAP_HEIGHT && self.arri_map[pos_y + 1][pos_x] != 1 => pos_y += 1,
+                3 if pos_x > 0 && self.arri_map[pos_y][pos_x - 1] != 1 => pos_x -= 1,
+                _ => {}
+            }
+        }
+
+        let dx = (pos_x as i32 - self.exit_x as i32).abs();
+        let dy = (pos_y as i32 - self.exit_y as i32).abs();
+        1.0 / ((dx + dy + 1) as f64)
+    }
+}
 
 #[derive(Clone)]
-struct Chromosome {
-    genes: Vec<Direction>,
-    fitness: i32,
-    end_position: Position,
+struct Genome {
+    bits: Vec<i32>,
+    fitness: f64,
 }
 
-impl Chromosome {
-    fn new_random(rng: &mut ThreadRng) -> Self {
-        let genes = (0..GENE_LENGTH).map(|_| Direction::random(rng)).collect();
-        Chromosome {
-            genes,
-            fitness: 0,
-            end_position: (0, 0),
-        }
-    }
-
-    fn evaluate_fitness(&mut self, maze: &Vec<Vec<bool>>, start: Position, goal: Position) {
-        let mut pos = start;
-
-        for &dir in &self.genes {
-            let new_pos = match dir {
-                Direction::Up if pos.1 > 0 => (pos.0, pos.1 - 1),
-                Direction::Down if pos.1 < MAZE_HEIGHT - 1 => (pos.0, pos.1 + 1),
-                Direction::Left if pos.0 > 0 => (pos.0 - 1, pos.1),
-                Direction::Right if pos.0 < MAZE_WIDTH - 1 => (pos.0 + 1, pos.1),
-                _ => pos,
-            };
-
-            if maze[new_pos.1][new_pos.0] {
-                pos = new_pos;
-            }
-        }
-
-        self.end_position = pos;
-        self.fitness = -((goal.0 as i32 - pos.0 as i32).abs() + (goal.1 as i32 - pos.1 as i32).abs());
-    }
-}
-
-fn evolve(maze: Vec<Vec<bool>>, start: Position, goal: Position) {
-    let mut rng = rand::thread_rng();
-    let mut population: Vec<Chromosome> = (0..POPULATION_SIZE)
-        .map(|_| Chromosome::new_random(&mut rng))
-        .collect();
-
-    for generation in 0..MAX_GENERATIONS {
-        for indiv in &mut population {
-            indiv.evaluate_fitness(&maze, start, goal);
-        }
-
-        population.sort_by(|a, b| b.fitness.cmp(&a.fitness));
-
-        println!(
-            "Gen {:3}: Best fitness = {:3} | Distance to goal = {} | Pos: {:?}",
-            generation,
-            population[0].fitness,
-            -population[0].fitness,
-            population[0].end_position
-        );
-
-        if population[0].fitness == 0 {
-            println!("Goal reached in generation {}!", generation);
-            print_path(&maze, &population[0], start, goal);
-            break;
-        }
-
-        let mut new_population = vec![population[0].clone()]; // Elitism
-
-        while new_population.len() < POPULATION_SIZE {
-            let parent1 = tournament_selection(&population, &mut rng);
-            let parent2 = tournament_selection(&population, &mut rng);
-            let mut child = crossover(parent1, parent2, &mut rng);
-            mutate(&mut child, &mut rng);
-            new_population.push(child);
-        }
-
-        population = new_population;
-    }
-}
-
-fn tournament_selection<'a>(pop: &'a [Chromosome], rng: &mut ThreadRng) -> &'a Chromosome {
-    let a = rng.gen_range(0..pop.len());
-    let b = rng.gen_range(0..pop.len());
-    if pop[a].fitness > pop[b].fitness {
-        &pop[a]
-    } else {
-        &pop[b]
-    }
-}
-
-fn crossover(parent1: &Chromosome, parent2: &Chromosome, rng: &mut ThreadRng) -> Chromosome {
-    let crossover_point = rng.gen_range(0..GENE_LENGTH);
-    let genes = parent1.genes[..crossover_point]
-        .iter()
-        .chain(parent2.genes[crossover_point..].iter())
-        .cloned()
-        .collect();
-    Chromosome {
-        genes,
-        fitness: 0,
-        end_position: (0, 0),
-    }
-}
-
-fn mutate(chrom: &mut Chromosome, rng: &mut ThreadRng) {
-    for gene in &mut chrom.genes {
-        if rng.gen_bool(MUTATION_RATE) {
-            *gene = Direction::random(rng);
+impl Genome {
+    fn new_random(length: usize) -> Self {
+        let mut rng = rand::thread_rng();
+        Genome {
+            bits: (0..length).map(|_| rng.gen_range(0..=1)).collect(),
+            fitness: 0.0,
         }
     }
 }
 
-fn generate_maze() -> Vec<Vec<bool>> {
-    let mut maze = vec![vec![true; MAZE_WIDTH]; MAZE_HEIGHT];
+// -- Decode functions moved out of GenAlgo --
 
-    // Add some walls
-    for y in 2..8 {
-        maze[y][5] = false;
-    }
-    for x in 2..5 {
-        maze[4][x] = false;
-    }
-
-    maze
+fn bin_to_int(v: &[i32]) -> i32 {
+    v.iter().rev().enumerate().map(|(i, &bit)| bit * 2_i32.pow(i as u32)).sum()
 }
 
-fn print_maze(maze: &Vec<Vec<bool>>, path: &[Position], start: Position, goal: Position) {
-    for y in 0..MAZE_HEIGHT {
-        for x in 0..MAZE_WIDTH {
-            let pos = (x, y);
-            if pos == start {
-                print!("S ");
-            } else if pos == goal {
-                print!("G ");
-            } else if path.contains(&pos) {
-                print!("* ");
-            } else if maze[y][x] {
-                print!(". ");
-            } else {
-                print!("# ");
-            }
-        }
-        println!();
-    }
+fn decode(bits: &[i32]) -> Vec<i32> {
+    bits.chunks(2).map(|chunk| bin_to_int(chunk)).collect()
 }
 
-fn print_path(maze: &Vec<Vec<bool>>, chrom: &Chromosome, start: Position, goal: Position) {
-    let mut pos = start;
-    let mut path = vec![pos];
+struct GenAlgo {
+    genomes: Vec<Genome>,
+    pop_size: usize,
+    crossover_rate: f64,
+    mutation_rate: f64,
+    chromo_length: usize,
+    gene_length: usize,
+    fittest_index: usize,
+    best_score: f64,
+    total_score: f64,
+    generation: usize,
+    maze: MazeMap,
+    running: bool,
+}
 
-    for &dir in &chrom.genes {
-        let new_pos = match dir {
-            Direction::Up if pos.1 > 0 => (pos.0, pos.1 - 1),
-            Direction::Down if pos.1 < MAZE_HEIGHT - 1 => (pos.0, pos.1 + 1),
-            Direction::Left if pos.0 > 0 => (pos.0 - 1, pos.1),
-            Direction::Right if pos.0 < MAZE_WIDTH - 1 => (pos.0 + 1, pos.1),
-            _ => pos,
+impl GenAlgo {
+    fn new(crossover_rate: f64, mutation_rate: f64, pop_size: usize, chromo_length: usize, gene_length: usize) -> Self {
+        let mut algo = GenAlgo {
+            genomes: Vec::new(),
+            pop_size,
+            crossover_rate,
+            mutation_rate,
+            chromo_length,
+            gene_length,
+            fittest_index: 0,
+            best_score: 0.0,
+            total_score: 0.0,
+            generation: 0,
+            maze: MazeMap::new(),
+            running: false,
         };
+        algo.create_start_population();
+        algo
+    }
 
-        if maze[new_pos.1][new_pos.0] {
-            pos = new_pos;
-            path.push(pos);
+    fn create_start_population(&mut self) {
+        for _ in 0..self.pop_size {
+            self.genomes.push(Genome::new_random(self.chromo_length));
         }
     }
 
-    println!("\nFinal path:");
-    print_maze(maze, &path, start, goal);
+    fn mutate(&self, bits: &mut Vec<i32>) {
+        let mut rng = rand::thread_rng();
+        for bit in bits.iter_mut() {
+            if rng.r#gen::<f64>() < self.mutation_rate {
+                *bit = 1 - *bit;
+            }
+        }
+    }
+
+    fn crossover(&self, mom: &[i32], dad: &[i32]) -> (Vec<i32>, Vec<i32>) {
+        let mut rng = rand::thread_rng();
+        if rng.r#gen::<f64>() > self.crossover_rate || mom == dad {
+            return (mom.to_vec(), dad.to_vec());
+        }
+
+        let cp = rng.gen_range(0..self.chromo_length);
+        let mut baby1 = Vec::new();
+        let mut baby2 = Vec::new();
+
+        baby1.extend_from_slice(&mom[..cp]);
+        baby1.extend_from_slice(&dad[cp..]);
+        baby2.extend_from_slice(&dad[..cp]);
+        baby2.extend_from_slice(&mom[cp..]);
+
+        (baby1, baby2)
+    }
+
+    fn roulette_selection(&self) -> &Genome {
+        let mut rng = rand::thread_rng();
+        let slice = rng.r#gen::<f64>() * self.total_score;
+        let mut total = 0.0;
+        for genome in &self.genomes {
+            total += genome.fitness;
+            if total >= slice {
+                return genome;
+            }
+        }
+        &self.genomes[0]
+    }
+
+    fn update_fitness(&mut self) {
+        self.total_score = 0.0;
+        self.best_score = 0.0;
+        self.fittest_index = 0;
+
+        let maze = &self.maze;
+
+        for (i, genome) in self.genomes.iter_mut().enumerate() {
+            let route = decode(&genome.bits); // standalone decode function, no borrow of self
+            genome.fitness = maze.test_route(&route);
+
+            self.total_score += genome.fitness;
+            if genome.fitness > self.best_score {
+                self.best_score = genome.fitness;
+                self.fittest_index = i;
+            }
+        }
+    }
+
+    fn epoch(&mut self) {
+        self.update_fitness();
+        let mut babies = Vec::new();
+        while babies.len() < self.pop_size {
+            let mom = self.roulette_selection();
+            let dad = self.roulette_selection();
+
+            let (mut baby1_bits, mut baby2_bits) = self.crossover(&mom.bits, &dad.bits);
+            self.mutate(&mut baby1_bits);
+            self.mutate(&mut baby2_bits);
+            babies.push(Genome { bits: baby1_bits, fitness: 0.0 });
+            babies.push(Genome { bits: baby2_bits, fitness: 0.0 });
+        }
+        self.genomes = babies;
+        self.generation += 1;
+    }
+
+    fn run(&mut self) {
+        println!("Population initialized...");
+        let mut input = String::new();
+        loop {
+            self.epoch();
+            println!("Best Fitness Score: {}", self.best_score);
+            println!("Best Genome: {:?}", self.genomes[self.fittest_index].bits);
+
+            if self.generation % 5 == 0 {
+                println!("Run next 5 Generations (Y/N)? >");
+                input.clear();
+                io::stdin().read_line(&mut input).expect("Failed to read input");
+                let answer = input.trim().to_uppercase();
+                if answer != "Y" {
+                    break;
+                }
+            }
+        }
+        println!("Program Complete. Exit Success");
+    }
 }
 
 fn main() {
-    let maze = generate_maze();
-    let start = (0, 0);
-    let goal = (9, 9);
-
-    println!("Initial Maze:");
-    print_maze(&maze, &[], start, goal);
-    println!("\nEvolving...\n");
-
-    evolve(maze, start, goal);
+    println!("Program started...");
+    let mut ga = GenAlgo::new(0.7, 0.0001, 140, 70, 2);
+    ga.run();
 }
 
