@@ -1,4 +1,8 @@
+//visualizer.rs
+
 use macroquad::prelude::*;
+use std::time::Duration;
+use std::thread::sleep;
 
 pub struct Visualizer {
     pub cell_size: f32,
@@ -46,7 +50,48 @@ impl Visualizer {
                 self.cell_size,
                 BLUE,
             );
+            sleep(Duration::from_millis(100));
             next_frame().await;
         }
     }
+
+    pub async fn animate(&self, path: &[(usize, usize)]) {
+        for step in 0..path.len() {
+            clear_background(BLACK);
+
+            for (y, row) in self.maze_grid.iter().enumerate() {
+                for (x, &c) in row.iter().enumerate() {
+                    let color = match c {
+                        '#' => DARKGRAY,
+                        ' ' => WHITE,
+                        '*' => GREEN,
+                        '~' => RED,
+                        _ => WHITE,
+                    };
+
+                    draw_rectangle(
+                        x as f32 * self.cell_size,
+                        y as f32 * self.cell_size,
+                        self.cell_size,
+                        self.cell_size,
+                        color,
+                    );
+                }
+            }
+
+            for &(x, y) in &path[..=step] {
+                draw_rectangle(
+                    x as f32 * self.cell_size,
+                    y as f32 * self.cell_size,
+                    self.cell_size,
+                    self.cell_size,
+                    BLUE,
+                );
+            }
+
+            next_frame().await;
+            sleep(Duration::from_millis(50));
+        }
+    }
+
 }
