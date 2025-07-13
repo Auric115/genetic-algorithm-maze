@@ -182,4 +182,54 @@ impl Maze {
             println!("{}", line);
         }
     }
+
+    pub fn test_route(&self, route: Vec<u8>) -> f64 {
+        let (mut x, mut y) = match self.start_pos {
+            Some(pos) => pos,
+            None => return 0.0,
+        };
+
+        let goal = match self.end_pos {
+            Some(pos) => pos,
+            None => return 0.0,
+        };
+
+        let mut steps = 0;
+        let max_x = self.grid[0].len();
+        let max_y = self.grid.len();
+
+        for dir in route {
+            let (dx, dy) = match dir {
+                0 => (0, -1),  // Up
+                1 => (1, 0),   // Right
+                2 => (0, 1),   // Down
+                3 => (-1, 0),  // Left
+                _ => (0, 0),   // Invalid
+            };
+
+            let nx = x as isize + dx;
+            let ny = y as isize + dy;
+
+            if nx >= 0 && nx < max_x as isize && ny >= 0 && ny < max_y as isize {
+                let gx = nx as usize;
+                let gy = ny as usize;
+                if self.grid[gy][gx] != '#' {
+                    x = gx;
+                    y = gy;
+                    steps += 1;
+
+                    if (x, y) == goal {
+                        // Reached the goal
+                        return 1000.0 - steps as f64;
+                    }
+                }
+            }
+        }
+
+        let dist = ((goal.0 as isize - x as isize).abs()
+            + (goal.1 as isize - y as isize).abs()) as f64;
+
+        1.0 / (1.0 + dist)
+    }
+
 }
