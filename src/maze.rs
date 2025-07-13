@@ -1,43 +1,185 @@
-pub const MAZE_WIDTH: usize = 15;
-pub const MAZE_HEIGHT: usize = 10;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
-pub const MAZE_MAP: [[u8; MAZE_WIDTH]; MAZE_HEIGHT] = [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1],
-    [8, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1],
-    [1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1],
-    [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1],
-    [1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 5],
-    [1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-];
+#[derive(Clone, Debug)]
+struct Cell {
+    x: usize,
+    y: usize,
+    neighbors: Vec<(usize, usize)>,
+    wall: bool,
+    open: bool,
+}
 
-pub const START_X: usize = 14;
-pub const START_Y: usize = 7;
-pub const GOAL_X: usize = 0;
-pub const GOAL_Y: usize = 2;
-
-pub fn draw_maze(agent_pos: Option<(usize, usize)>) {
-    for y in 0..MAZE_HEIGHT {
-        for x in 0..MAZE_WIDTH {
-            if let Some((ax, ay)) = agent_pos {
-                if x == ax && y == ay {
-                    print!("*");
-                    continue;
-                }
-            }
-
-            match MAZE_MAP[y][x] {
-                0 => print!(" "),     // path
-                1 => print!("#"),     // wall
-                5 => print!("G"),     // goal
-                8 => print!("S"),     // start
-                _ => print!("?"),     // unknown
-            }
+impl Cell {
+    fn new(x: usize, y: usize, is_wall: bool) -> Self {
+        Self {
+            x,
+            y,
+            neighbors: Vec::new(),
+            wall: is_wall,
+            open: true,
         }
-        println!();
+    }
+
+    fn add_neighbor(&mut self, neighbor: (usize, usize)) {
+        if !self.neighbors.contains(&neighbor) {
+            self.neighbors.push(neighbor);
+        }
     }
 }
 
+pub struct Maze {
+    dimension_x: usize,
+    dimension_y: usize,
+    cells: Vec<Vec<Cell>>,
+    grid: Vec<Vec<char>>,
+    start_pos: Option<(usize, usize)>,
+    end_pos: Option<(usize, usize)>,
+}
+
+impl Maze {
+    pub fn new(dimension_x: usize, dimension_y: usize) -> Self {
+        let mut maze = Maze {
+            dimension_x,
+            dimension_y,
+            cells: vec![vec![Cell::new(0, 0, true); dimension_y]; dimension_x],
+            grid: vec![vec!['#'; dimension_x * 2 + 1]; dimension_y * 2 + 1],
+            start_pos: None,
+            end_pos: None,
+        };
+        maze.init_cells();
+        maze.generate_maze();
+        maze.update_grid();
+        maze.place_start_end();
+        maze
+    }
+
+    fn init_cells(&mut self) {
+        for x in 0..self.dimension_x {
+            for y in 0..self.dimension_y {
+                self.cells[x][y] = Cell::new(x, y, true);
+            }
+        }
+    }
+
+    fn get_cell(&self, x: isize, y: isize) -> Option<&Cell> {
+        if x >= 0 && y >= 0 && (x as usize) < self.dimension_x && (y as usize) < self.dimension_y {
+            Some(&self.cells[x as usize][y as usize])
+        } else {
+            None
+        }
+    }
+
+    fn get_cell_mut(&mut self, x: isize, y: isize) -> Option<&mut Cell> {
+        if x >= 0 && y >= 0 && (x as usize) < self.dimension_x && (y as usize) < self.dimension_y {
+            Some(&mut self.cells[x as usize][y as usize])
+        } else {
+            None
+        }
+    }
+
+    fn generate_maze(&mut self) {
+        let mut rng = thread_rng();
+        let mut stack = Vec::new();
+
+        if let Some(start) = self.get_cell_mut(0, 0) {
+            start.wall = false;
+            start.open = false;
+        }
+        stack.push((0, 0));
+
+        while let Some((x, y)) = stack.pop() {
+            let mut neighbors = Vec::new();
+
+            for &(dx, dy) in &[(1, 0), (0, 1), (-1, 0), (0, -1)] {
+                let nx = x as isize + dx;
+                let ny = y as isize + dy;
+
+                if let Some(cell) = self.get_cell(nx, ny) {
+                    if cell.wall && cell.open {
+                        neighbors.push((nx as usize, ny as usize));
+                    }
+                }
+            }
+
+            if neighbors.is_empty() {
+                continue;
+            }
+
+            stack.push((x, y));
+
+            let &(nx, ny) = neighbors.choose(&mut rng).unwrap();
+
+            {
+                {
+                    let current = self.get_cell_mut(x as isize, y as isize).unwrap();
+                    current.add_neighbor((nx, ny));
+                    current.wall = false;
+                }
+
+                let selected = self.get_cell_mut(nx as isize, ny as isize).unwrap();
+                selected.add_neighbor((x, y));
+                selected.wall = false;
+                selected.open = false;
+            }
+
+            stack.push((nx, ny));
+        }
+    }
+
+    fn update_grid(&mut self) {
+        for row in self.grid.iter_mut() {
+            for ch in row.iter_mut() {
+                *ch = '#';
+            }
+        }
+
+        for x in 0..self.dimension_x {
+            for y in 0..self.dimension_y {
+                let grid_x = x * 2 + 1;
+                let grid_y = y * 2 + 1;
+
+                if !self.cells[x][y].wall {
+                    self.grid[grid_y][grid_x] = ' ';
+                }
+
+                for &(nx, ny) in &self.cells[x][y].neighbors {
+                    let passage_x = (grid_x + (nx * 2 + 1)) / 2;
+                    let passage_y = (grid_y + (ny * 2 + 1)) / 2;
+                    self.grid[passage_y][passage_x] = ' ';
+                }
+            }
+        }
+    }
+
+    fn place_start_end(&mut self) {
+        for y in 0..self.dimension_y {
+            let grid_x = self.dimension_x * 2;
+            let grid_y = y * 2 + 1;
+
+            if self.grid[grid_y][grid_x - 1] == ' ' {
+                self.grid[grid_y][grid_x] = '*';
+                self.start_pos = Some((grid_x, grid_y));
+                break;
+            }
+        }
+
+        for y in (0..self.dimension_y).rev() {
+            let grid_x = 0;
+            let grid_y = y * 2 + 1;
+
+            if self.grid[grid_y][grid_x + 1] == ' ' {
+                self.grid[grid_y][grid_x] = '~';
+                self.end_pos = Some((grid_x, grid_y));
+                break;
+            }
+        }
+    }
+
+    pub fn display(&self) {
+        for row in &self.grid {
+            let line: String = row.iter().collect();
+            println!("{}", line);
+        }
+    }
+}
