@@ -2,7 +2,6 @@
 
 use ::rand::seq::SliceRandom;
 use ::rand::thread_rng;
-use crate::visualizer::Visualizer;
 use macroquad::prelude::*;
 
 #[derive(Clone, Debug)]
@@ -184,7 +183,7 @@ impl Maze {
         }
     }
 
-    pub fn display(&self) {
+    pub fn _display(&self) {
         for row in &self.grid {
             let line: String = row.iter().collect();
             println!("{}", line);
@@ -192,52 +191,46 @@ impl Maze {
     }
 
     pub fn test_route(&self, route: Vec<u8>) -> f64 {
-        let (mut x, mut y) = match self.start_pos {
-            Some(pos) => pos,
-            None => return 0.0,
-        };
-
-        let goal = match self.end_pos {
-            Some(pos) => pos,
-            None => return 0.0,
-        };
-
-        let mut steps = 0;
-        let max_x = self.grid[0].len();
-        let max_y = self.grid.len();
+        let mut pos = self.start_pos().unwrap();
+        let mut visited = std::collections::HashSet::new();
+        visited.insert(pos);
+        let mut fitness:f64 = 0.0;
 
         for dir in route {
             let (dx, dy) = match dir {
-                0 => (0, -1),  // Up
-                1 => (1, 0),   // Right
-                2 => (0, 1),   // Down
-                3 => (-1, 0),  // Left
-                _ => (0, 0),   // Invalid
+                0 => (0, -1),
+                1 => (1, 0),
+                2 => (0, 1),
+                3 => (-1, 0),
+                _ => (0, 0),
             };
 
-            let nx = x as isize + dx;
-            let ny = y as isize + dy;
+            let new_x = (pos.0 as isize + dx) as usize;
+            let new_y = (pos.1 as isize + dy) as usize;
 
-            if nx >= 0 && nx < max_x as isize && ny >= 0 && ny < max_y as isize {
-                let gx = nx as usize;
-                let gy = ny as usize;
-                if self.grid[gy][gx] != '#' {
-                    x = gx;
-                    y = gy;
-                    steps += 1;
+            if new_x >= self.grid[0].len() || new_y >= self.grid.len() || self.grid[new_y][new_x] == '#' {
+                fitness -= 1.0;
+                continue;
+            }
 
-                    if (x, y) == goal {
-                        // Reached the goal
-                        return 1000.0 - steps as f64;
-                    }
-                }
+            pos = (new_x, new_y);
+            if visited.insert(pos) {
+                fitness += 1.0;
+            }
+
+            if Some(pos) == self.end_pos() {
+                fitness += 1000.0;
+                break;
             }
         }
 
-        let dist = ((goal.0 as isize - x as isize).abs()
-            + (goal.1 as isize - y as isize).abs()) as f64;
+        if let Some(end) = self.end_pos() {
+            let dx = (end.0 as isize - pos.0 as isize).abs() as f64;
+            let dy = (end.1 as isize - pos.1 as isize).abs() as f64;
+            fitness += 10.0 / (1.0 + dx + dy);
+        }
 
-        1.0 / (1.0 + dist)
+        fitness
     }
 
     pub fn start_pos(&self) -> Option<(usize, usize)> {

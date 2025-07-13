@@ -15,7 +15,7 @@ impl Visualizer {
         Self { cell_size, maze_grid }
     }
 
-    pub async fn draw_maze(&self) {
+    pub async fn _draw_maze(&self) {
         clear_background(BLACK);
 
         for (y, row) in self.maze_grid.iter().enumerate() {
@@ -41,7 +41,7 @@ impl Visualizer {
         next_frame().await;
     }
 
-    pub async fn draw_route(&self, path: &[(usize, usize)]) {
+    pub async fn _draw_route(&self, path: &[(usize, usize)]) {
         for &(x, y) in path {
             draw_rectangle(
                 x as f32 * self.cell_size,
