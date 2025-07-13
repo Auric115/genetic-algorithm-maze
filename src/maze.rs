@@ -1,5 +1,7 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use ::rand::seq::SliceRandom;
+use ::rand::thread_rng;
+use crate::visualizer::Visualizer;
+use macroquad::prelude::*;
 
 #[derive(Clone, Debug)]
 struct Cell {
@@ -76,6 +78,10 @@ impl Maze {
         } else {
             None
         }
+    }
+
+    pub fn get_grid(&self) -> Vec<Vec<char>> {
+        self.grid.clone()
     }
 
     fn generate_maze(&mut self) {
@@ -230,6 +236,40 @@ impl Maze {
             + (goal.1 as isize - y as isize).abs()) as f64;
 
         1.0 / (1.0 + dist)
+    }
+
+    pub async fn test_route_visual(&self, directions: Vec<u8>, visualizer: &Visualizer) -> f64 {
+        let mut pos = self.start_pos.unwrap();
+        let mut score = 0.0;
+        let mut visited_path = vec![pos];
+
+        for dir in directions {
+            let (dx, dy) = match dir {
+                0 => (0, -1),
+                1 => (1, 0),
+                2 => (0, 1),
+                3 => (-1, 0),
+                _ => (0, 0),
+            };
+
+            let new_x = (pos.0 as isize + dx).clamp(0, self.grid[0].len() as isize - 1) as usize;
+            let new_y = (pos.1 as isize + dy).clamp(0, self.grid.len() as isize - 1) as usize;
+
+            if self.grid[new_y][new_x] != '#' {
+                pos = (new_x, new_y);
+                visited_path.push(pos);
+                score += 1.0;
+                if Some(pos) == self.end_pos {
+                    score += 100.0;
+                    break;
+                }
+            }
+        }
+
+        visualizer.draw_maze().await;
+        visualizer.draw_route(&visited_path).await;
+
+        score
     }
 
 }

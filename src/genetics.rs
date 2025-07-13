@@ -19,7 +19,7 @@ impl Genome {
     }
 }
 
-pub struct GenAlgo {
+pub struct GeneticAlgorithm {
     pub population: Vec<Genome>,
     pub pop_size: usize,
     pub crossover_rate: f64,
@@ -35,7 +35,7 @@ pub struct GenAlgo {
     pub running: bool,
 }
 
-impl GenAlgo {
+impl GeneticAlgorithm {
     pub fn new(crossover_rate: f64, mutation_rate: f64, pop_size: usize, chromo_length: usize, gene_length: usize) -> Self {
         let mut algo = Self {
             population: Vec::with_capacity(pop_size),
@@ -100,7 +100,7 @@ impl GenAlgo {
         bits.iter().fold(0, |acc, &b| (acc << 1) | b)
     }
 
-    fn decode(&self, bits: &[u8]) -> Vec<u8> {
+    pub fn decode(&self, bits: &[u8]) -> Vec<u8> {
         bits.chunks(2).map(Self::bin_to_int).collect()
     }
 
