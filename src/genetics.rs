@@ -7,6 +7,7 @@ use rayon::prelude::*;
 pub struct Genome {
     pub bits: Vec<u8>,
     pub fitness: f64,
+    pub stagnation: usize,
 }
 
 impl Genome {
@@ -16,6 +17,7 @@ impl Genome {
         Self {
             bits,
             fitness: 0.0,
+            stagnation: 0,
         }
     }
 }
@@ -23,6 +25,8 @@ impl Genome {
 pub struct GeneticAlgorithm {
     pub population: Vec<Genome>,
     pub pop_size: usize,
+    pub elitism: f64,
+    pub stagnation_limit: usize,
     pub crossover_rate: f64,
     pub mutation_rate: f64,
     pub chromo_length: usize,
@@ -35,10 +39,12 @@ pub struct GeneticAlgorithm {
 }
 
 impl GeneticAlgorithm {
-    pub fn new(crossover_rate: f64, mutation_rate: f64, pop_size: usize, chromo_length: usize, gene_length: usize) -> Self {
+    pub fn new(crossover_rate: f64, mutation_rate: f64, pop_size: usize, elitism: f64, stagnation_limit: usize, chromo_length: usize, gene_length: usize) -> Self {
         let mut algo = Self {
             population: Vec::with_capacity(pop_size),
             pop_size,
+            elitism,
+            stagnation_limit,
             crossover_rate,
             mutation_rate,
             chromo_length,
@@ -139,10 +145,18 @@ impl GeneticAlgorithm {
         self.fittest_index = 0;
 
         for (i, (genome, fitness)) in self.population.iter_mut().zip(fitness_scores).enumerate() {
+            if fitness > genome.fitness {
+                genome.stagnation = 0;
+            } else {
+                genome.stagnation += 1;
+            }
+
             genome.fitness = fitness;
-            self.total_fitness += fitness;
-            if fitness > self.best_fitness {
-                self.best_fitness = fitness;
+
+            self.total_fitness += genome.fitness;
+
+            if genome.fitness > self.best_fitness {
+                self.best_fitness = genome.fitness;
                 self.fittest_index = i;
             }
         }
@@ -152,27 +166,38 @@ impl GeneticAlgorithm {
     where
         F: Fn(Vec<u8>) -> f64 + Send + Sync + Copy,
     {
+        self.population.retain(|g| g.stagnation < self.stagnation_limit);
+        let culled_count = self.pop_size - self.population.len();
+        self.inject_random_individuals(culled_count);
+
         let mut new_population = Vec::with_capacity(self.pop_size);
         
-        let elite = self.population[self.fittest_index].clone();
-        new_population.push(elite);
+        let mut sorted = self.population.clone();
+        sorted.sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap_or(std::cmp::Ordering::Equal));
+        for elite in sorted.iter().take((self.elitism * self.pop_size as f64).floor() as usize) {
+            new_population.push(elite.clone());
+        }
 
         while new_population.len() + 1 < self.pop_size {
-            let mom = self.roulette_selection();
-            let dad = self.roulette_selection();
+            let mom = self.tournament_selection(3);
+            let dad = self.tournament_selection(3);
             let (mut baby1_bits, mut baby2_bits) = self.crossover(&mom.bits, &dad.bits);
             self.mutate(&mut baby1_bits);
             self.mutate(&mut baby2_bits);
 
+             let avg_stagnation = ((mom.stagnation + dad.stagnation) / 2).max(0);
+
             new_population.push(Genome {
                 bits: baby1_bits,
                 fitness: 0.0,
+                stagnation: avg_stagnation,
             });
 
             if new_population.len() < self.pop_size {
                 new_population.push(Genome {
                     bits: baby2_bits,
                     fitness: 0.0,
+                    stagnation: avg_stagnation,
                 });
             }
         }
@@ -191,10 +216,12 @@ impl GeneticAlgorithm {
                 .collect();
 
             let fitness = 0.0;
+            let stagnation = 0;
 
             self.population.push(Genome {
                 bits: random_bits,
                 fitness,
+                stagnation,
             });
         }
 

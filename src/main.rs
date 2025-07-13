@@ -8,17 +8,33 @@ use macroquad::prelude::*;
 use maze::Maze;
 use visualizer::Visualizer;
 use genetics::GeneticAlgorithm;
+use macroquad::window::Conf;
 
-#[macroquad::main("Genetic Maze Solver")]
+const MAZE_WIDTH: usize = 10;
+const MAZE_HEIGHT: usize = 10;
+const CELL_SIZE: f32 = 20.0;
+
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "Genetic Maze Solver".to_string(),
+        window_width: ((MAZE_WIDTH * 2 + 1) as f32 * CELL_SIZE) as i32,
+        window_height: ((MAZE_HEIGHT * 2 + 1) as f32 * CELL_SIZE) as i32,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
-    let maze = Maze::new(10, 10);
+    let maze = Maze::new(MAZE_WIDTH, MAZE_HEIGHT);
     let visualizer = Visualizer::new(maze.get_grid());
 
     let mut ga = GeneticAlgorithm::new(
         0.7,
         0.15,
-        150,
-        1024,
+        300,
+        0.05,
+        10,
+        512,
         2,
     );
 
@@ -27,6 +43,9 @@ async fn main() {
     let mut goal_reached = false;
     let mut final_path = Vec::new();
     let mut generation = 0;
+
+    println!("{:>4} | {:>12} | {:<36}", "Gen.", "Fitness", "Genome");
+    println!("{:-<4}-+-{:-<12}-+-{:-<36}", "", "", "");
 
     loop {
         if !goal_reached {
@@ -47,18 +66,27 @@ async fn main() {
                 ga.inject_random_individuals(5);
             }
 
-            let genome_hex: String = best_bits
-                .chunks(8)
-                .take(8)
-                .map(|chunk| {
+            let hex_str = |bits: &[u8]| -> String {
+                let byte_chunks = bits.chunks(8).collect::<Vec<_>>();
+
+                let start_hex: String = byte_chunks.iter().take(8).map(|chunk| {
                     let byte = chunk.iter().fold(0u8, |acc, &b| (acc << 1) | b as u8);
                     format!("{:02X}", byte)
-                })
-                .collect();
+                }).collect();
+
+                let end_hex: String = byte_chunks.iter().rev().take(8).collect::<Vec<_>>().iter().rev().map(|chunk| {
+                    let byte = chunk.iter().fold(0u8, |acc, &b| (acc << 1) | b as u8);
+                    format!("{:02X}", byte)
+                }).collect();
+
+                format!("{}...{}", start_hex, end_hex)
+            };
 
             println!(
-                "Generation {:>4} | Best Fitness: {:>6.2} | Best Genome: {}",
-                generation, fitness, genome_hex
+                "{:>4} | {:>12.2} | {:<36}",
+                generation,
+                fitness,
+                hex_str(&best_bits)
             );
 
             generation += 1;

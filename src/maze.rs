@@ -194,7 +194,8 @@ impl Maze {
         let mut pos = self.start_pos().unwrap();
         let mut visited = std::collections::HashSet::new();
         visited.insert(pos);
-        let mut fitness:f64 = 0.0;
+
+        let mut fitness: f64 = 0.0;
 
         for dir in route {
             let (dx, dy) = match dir {
@@ -209,13 +210,15 @@ impl Maze {
             let new_y = (pos.1 as isize + dy) as usize;
 
             if new_x >= self.grid[0].len() || new_y >= self.grid.len() || self.grid[new_y][new_x] == '#' {
-                fitness -= 1.0;
+                fitness -= 5.0;
                 continue;
             }
 
             pos = (new_x, new_y);
             if visited.insert(pos) {
                 fitness += 1.0;
+            } else {
+                fitness -= 0.5;
             }
 
             if Some(pos) == self.end_pos() {
@@ -227,7 +230,7 @@ impl Maze {
         if let Some(end) = self.end_pos() {
             let dx = (end.0 as isize - pos.0 as isize).abs() as f64;
             let dy = (end.1 as isize - pos.1 as isize).abs() as f64;
-            fitness += 10.0 / (1.0 + dx + dy);
+            fitness += 50.0 / (1.0 + dx + dy);
         }
 
         fitness
