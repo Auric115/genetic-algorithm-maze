@@ -3,6 +3,10 @@
 use rand::prelude::*;
 use rayon::prelude::*;
 
+fn hamming_distance(a: &[u8], b: &[u8]) -> usize {
+    a.iter().zip(b.iter()).filter(|(x, y)| x != y).count()
+}
+
 #[derive(Clone, Debug)]
 pub struct Genome {
     pub bits: Vec<u8>,
@@ -114,15 +118,22 @@ impl GeneticAlgorithm {
     }
 
     pub fn decode(&self, bits: &[u8]) -> Vec<u8> {
-        bits.chunks(2).map(|chunk| {
-            match chunk {
+        let mut decoded = Vec::with_capacity(bits.len() / 2);
+        for chunk in bits.chunks(2) {
+            if chunk.len() != 2 {
+                // Log warning or skip last bit if chunk is incomplete
+                continue;
+            }
+            let dir = match chunk {
                 [0, 0] => 0,
                 [0, 1] => 1,
                 [1, 0] => 2,
                 [1, 1] => 3,
-                _ => 0,
-            }
-        }).collect()
+                _ => 0, // default fallback
+            };
+            decoded.push(dir);
+        }
+        decoded
     }
 
     pub fn update_fitness<F>(&mut self, test_route: F)
@@ -212,7 +223,7 @@ impl GeneticAlgorithm {
         use rand::Rng;
         for _ in 0..count {
             let random_bits: Vec<u8> = (0..self.chromo_length)
-                .map(|_| rand::thread_rng().gen_range(0..4))
+                .map(|_| rand::thread_rng().gen_range(0..=1))
                 .collect();
 
             let fitness = 0.0;
@@ -230,8 +241,51 @@ impl GeneticAlgorithm {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.fittest_index = 0;
+        self.best_fitness = 0.0;
+        self.total_fitness = 0.0;
+        self.generation = 0;
+        self.create_start_population();
+    }
+
     pub fn set_mutation_rate(&mut self, rate: f64) {
         self.mutation_rate = rate;
+    }
+
+    pub fn average_hamming_distance(&self, top_n: usize) -> f64 {
+        let sorted = {
+            let mut pop = self.population.clone();
+            pop.sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap());
+            pop.into_iter().take(top_n).collect::<Vec<_>>()
+        };
+
+        if sorted.len() < 2 {
+            return 0.0;
+        }
+
+        let mut total_distance = 0usize;
+        let mut count = 0usize;
+
+        for i in 0..sorted.len() {
+            for j in (i + 1)..sorted.len() {
+                let dist = hamming_distance(&sorted[i].bits, &sorted[j].bits);
+                total_distance += dist;
+                count += 1;
+            }
+        }
+
+        total_distance as f64 / count as f64
+    }
+
+    pub fn adapt_mutation_rate(&mut self, min_rate: f64, max_rate: f64, target_diversity: f64) {
+        let diversity = self.average_hamming_distance((self.elitism * self.pop_size as f64).ceil() as usize);
+
+        if diversity < target_diversity {
+            self.mutation_rate = (self.mutation_rate * 1.1).min(max_rate);
+        } else {
+            self.mutation_rate = (self.mutation_rate * 0.9).max(min_rate);
+        }
     }
 
 }

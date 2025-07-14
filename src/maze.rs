@@ -186,7 +186,7 @@ impl Maze {
     pub fn _display(&self) {
         for row in &self.grid {
             let line: String = row.iter().collect();
-            println!("{}", line);
+            println!("{line}");
         }
     }
 
@@ -196,6 +196,8 @@ impl Maze {
         visited.insert(pos);
 
         let mut fitness: f64 = 0.0;
+        let mut steps = 0;
+        let mut reached_goal = false;
 
         for dir in route {
             let (dx, dy) = match dir {
@@ -210,19 +212,22 @@ impl Maze {
             let new_y = (pos.1 as isize + dy) as usize;
 
             if new_x >= self.grid[0].len() || new_y >= self.grid.len() || self.grid[new_y][new_x] == '#' {
-                fitness -= 5.0;
+                fitness -= 25.0;
                 continue;
             }
 
             pos = (new_x, new_y);
+            steps += 1;
+
             if visited.insert(pos) {
                 fitness += 1.0;
             } else {
-                fitness -= 0.5;
+                fitness -= 2.5;
             }
 
             if Some(pos) == self.end_pos() {
                 fitness += 1000.0;
+                reached_goal = true;
                 break;
             }
         }
@@ -230,7 +235,13 @@ impl Maze {
         if let Some(end) = self.end_pos() {
             let dx = (end.0 as isize - pos.0 as isize).abs() as f64;
             let dy = (end.1 as isize - pos.1 as isize).abs() as f64;
-            fitness += 50.0 / (1.0 + dx + dy);
+            let manhattan_distance = dx + dy;
+
+            fitness += 50.0 / (1.0 + manhattan_distance);
+
+            if reached_goal {
+                fitness += 100.0 / (1.0 + steps as f64);
+            }
         }
 
         fitness
