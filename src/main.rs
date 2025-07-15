@@ -1,40 +1,27 @@
-// main.rs
-
 mod maze;
 mod visualizer;
 mod runner;
 
 use macroquad::prelude::*;
-use runner::Runner;
+use maze::Maze;
 use visualizer::Visualizer;
+use runner::Runner;
 
-#[macroquad::main("Maze Runner")]
+#[macroquad::main("Free Maze Runner")]
 async fn main() {
-    let maze = maze::Maze::new(20, 20);
-    let mut visualizer = Visualizer::new(maze.grid().clone());
-    let start_pos = maze.start_pos().expect("No start position found");
+    let cell_size = 20.0;
+    let maze = Maze::new(20, 20, cell_size);
+    let visualizer = Visualizer::new(maze.grid.clone(), cell_size);
 
-    let mut runner = Runner::new(start_pos);
+    let mut runner = Runner::new(maze.start_position().unwrap(), 5.0, 100.0);
 
     loop {
+        let dt = get_frame_time();
+        runner.update(dt, &maze);
+
         clear_background(BLACK);
-        visualizer.draw_static_maze();
-
-        // Handle movement input
-        if is_key_pressed(KeyCode::Up) {
-            runner.try_move(0, -1, &maze);
-        }
-        if is_key_pressed(KeyCode::Down) {
-            runner.try_move(0, 1, &maze);
-        }
-        if is_key_pressed(KeyCode::Left) {
-            runner.try_move(-1, 0, &maze);
-        }
-        if is_key_pressed(KeyCode::Right) {
-            runner.try_move(1, 0, &maze);
-        }
-
-        visualizer.draw_runner(runner.pos);
+        visualizer.draw_maze();
+        visualizer.draw_runner(runner.position, runner.radius);
         next_frame().await;
     }
 }
